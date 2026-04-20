@@ -7,7 +7,7 @@ class Config:
     dirs: dict[str, str]
 
     def __init__(self, path: str = ''):
-        path = path or os.path.join('config', 'config.json')
+        path = path or os.path.join(__file__.rstrip('/src/config.py'), 'config', 'config.json')
         assert os.path.isfile(path), f"{path} is not a valid config file."
 
         self.path = path

@@ -23,12 +23,20 @@ parser.add_argument(
 
 parser.add_argument(
     "-l", "--list",
+    action="store_true",
     help="List all paths."
 )
 
 parser.add_argument(
     "-s", "--source",
-    type=str,
-    help="Set the git repository URL to pull saves from."
+    action="store_true",
+    help="Get the git repository URL."
 )
+
+parser.add_argument(
+    "-S", "--set-source",
+    type=str,
+    help="Set the git repository URL."
+)
+
 args = parser.parse_args()

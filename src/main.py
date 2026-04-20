@@ -14,6 +14,9 @@ if __name__ == "__main__":
         print(config.dirs)
         
     if args.source:
-        config.set_repo(args.source)
+        print(config.repo)
+    
+    if args.set_source:
+        config.set_repo(args.set_source)
     
     pass
