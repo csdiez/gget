@@ -6,7 +6,8 @@ class Config:
     repo: str
     dirs: dict[str, str]
 
-    def __init__(self, path: str = os.path.join('config', 'config.json')):
+    def __init__(self, path: str = ''):
+        path = path or os.path.join('config', 'config.json')
         assert os.path.isfile(path), f"{path} is not a valid config file."
 
         self.path = path
@@ -20,7 +21,19 @@ class Config:
         self.repo = config['repo']
         assert isinstance(self.repo, str), f'"repo" is of invalid type {type(self.repo)}'
         self.dirs = config['dirs']
-        assert isinstance(self.dirs, str), f'"dirs" is of invalid type {type(self.dirs)}'
+        assert isinstance(self.dirs, dict), f'"dirs" is of invalid type {type(self.dirs)}'
+        
+    def set_repo(self, url: str) -> None:
+        self.repo = url
+        self.save()
+        
+    def add_dir(self, name: str, path: str) -> None:
+        self.dirs[name] = path
+        self.save()
+        
+    def del_dir(self, name: str) -> None:
+        self.dirs.pop(name)
+        self.save()
         
     def save(self) -> None:
         with open(self.path, 'w') as f:
