@@ -1,11 +1,8 @@
 import subprocess
 
-def clone(url:str, *args, **kwargs) -> None:
+def clone(url:str, *args) -> None:
     call = ['git', 'clone', url, 'save']
-    for k, v in kwargs.items():
-        call.append(k)
-        call.append(v)
-        
+    call.extend(args)
     subprocess.call(call)
     
-clone("https://github.com/csdiez/gget.git")
+clone("https://github.com/csdiez/gget.git", '-b', 'test')
