@@ -3,7 +3,8 @@ import os
 
 class Config:
     path: str
-    repo: str
+    repo_link: str
+    save_dir: str
     dirs: dict[str, str]
 
     def __init__(self, path: str = ''):
@@ -15,16 +16,17 @@ class Config:
         with open(path) as f:
             config = json.load(f)
         
-        assert 'repo' in config, f'Broken Config File: {path}\n"repo" not found'
-        assert 'dirs' in config, f'Broken Config File: {path}\n"dirs" not found'
-        
-        self.repo = config['repo']
-        assert isinstance(self.repo, str), f'"repo" is of invalid type {type(self.repo)}'
-        self.dirs = config['dirs']
-        assert isinstance(self.dirs, dict), f'"dirs" is of invalid type {type(self.dirs)}'
-        
+        for key, t, default in [('repo_link', str, ""),
+                                ('save_dir', str, "save"),
+                                ('dirs', dict, {})]:
+            setattr(self, key, config.get(key, default))
+
     def set_repo(self, url: str) -> None:
-        self.repo = url
+        self.repo_link = url
+        self.save()
+        
+    def set_save_dir(self, path: str) -> None:
+        self.save_dir = path
         self.save()
         
     def add_dir(self, name: str, path: str) -> None:
@@ -37,4 +39,4 @@ class Config:
         
     def save(self) -> None:
         with open(self.path, 'w') as f:
-            json.dump({'repo': self.repo, 'dirs': self.dirs}, f, indent=4)
+            json.dump({'repo': self.repo_link, 'save_dir': self.save_dir, 'dirs': self.dirs}, f, indent=4)

@@ -4,8 +4,14 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument(
     "-c", "--config",
-    type=str,
+    action="store_true",
     help="Path to config"
+)
+
+parser.add_argument(
+    "-C", "--set-config",
+    type=str,
+    help="Set the path to config"
 )
 
 parser.add_argument(
@@ -22,21 +28,63 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "-l", "--list",
+    "-g", "--games",
     action="store_true",
-    help="List all paths."
+    help="List all games and paths."
 )
 
 parser.add_argument(
-    "-s", "--source",
+    "-u", "--url",
     action="store_true",
     help="Get the git repository URL."
 )
 
 parser.add_argument(
-    "-S", "--set-source",
+    "-U", "--set-url",
     type=str,
     help="Set the git repository URL."
+)
+
+parser.add_argument(
+    "-p", "--path",
+    action="store_true",
+    help="Get the git repository path."
+)
+
+parser.add_argument(
+    "-P", "--set-path",
+    type=str,
+    help="Set the git repository path."
+)
+
+parser.add_argument(
+    "-i", "--init",
+    action="store_true",
+    help="Initialize path"
+)
+
+parser.add_argument(
+    "-s", "--save",
+    type=str,
+    help='Save one game by name.'
+)
+
+parser.add_argument(
+    "-l", "--load",
+    type=str,
+    help='Load one game by name.'
+)
+
+parser.add_argument(
+    "-sa", "--save_all",
+    action="store_true",
+    help='Save all games.'
+)
+
+parser.add_argument(
+    "-la", "--load_all",
+    action="store_true",
+    help='Load all games.'
 )
 
 args = parser.parse_args()
