@@ -1,7 +1,5 @@
 {
-    "repo": "http://forgejo.quagga-turtle.ts.net:3000/Games/saves.git",
+    "repo_link": "",
     "save_dir": "",
-    "dirs": {
-        "Legend_of_Zelda_Breath_of_the_Wild": "/home/diez/.var/app/io.github.ryubing.Ryujinx/config/Ryujinx/bis/user/save"
-    }
+    "dirs": {}
 }

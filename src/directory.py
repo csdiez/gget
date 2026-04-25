@@ -5,8 +5,6 @@ import shutil
 def make_full_dir(path_name: str) -> Path:
     path = Path(path_name)
     path.mkdir(parents=True, exist_ok=True)
-    for sub_dir in path.iterdir():
-        pass
     return path
 
 def copy_dir(src: str, dst: str):
@@ -17,3 +15,9 @@ def copy_dir(src: str, dst: str):
 def rm_dir(path: str) -> None:
     if os.path.exists(path):
         shutil.rmtree(path)
+
+def exists(path: str) -> bool:
+    return os.path.exists(path)
+
+def join(*path: str) -> str:
+    return os.path.join(*path)
