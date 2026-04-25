@@ -62,8 +62,8 @@ if __name__ == "__main__":
         repo.save()
        
     if args.load_all:
+        repo.load()
         for game, path in config.dirs.items():
             d.copy_dir(d.join(config.save_dir, game), path)
-        repo.load()
     
     pass

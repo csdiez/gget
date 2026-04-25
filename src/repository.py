@@ -20,7 +20,12 @@ class Repository:
         call = ['git', '-C', self.path]
         call.extend(args)
         print(' '.join(call))
-        return str(subprocess.check_output(call))
+        try:
+            response = str(subprocess.check_output(call))
+            print(response)
+        except:
+            raise Exception()
+        return response
 
     def init(self) -> None:
         self.call('init')
@@ -41,6 +46,10 @@ class Repository:
         #     except: pass
         #     d.copy_dir(path, self.path)
         self.call('add', '.')
+        
+        if "nothing to commit, working tree clean" in self.call('status'):
+            return
+        
         self.call('commit', '-m', datetime.now().strftime("%d/%m/%Y_%H:%M:%S"))
         self.call('push')
         
