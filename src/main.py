@@ -39,6 +39,9 @@ if __name__ == "__main__":
 
     repo = Repository(config.repo_link, config.save_dir)
 
+    if args.ping:
+        repo.ping()
+
     if args.init:
         d.rm_dir(config.save_dir)
         d.make_full_dir(config.save_dir)

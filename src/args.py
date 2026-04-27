@@ -58,6 +58,12 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--ping",
+    action="store_true",
+    help="Ping repository"
+)
+
+parser.add_argument(
     "-i", "--init",
     action="store_true",
     help="Initialize path"

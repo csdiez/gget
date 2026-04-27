@@ -1,3 +1,6 @@
+from multiprocessing import Manager, Process
+
+from pythonping import ping
 from datetime import datetime
 import subprocess
 
@@ -19,32 +22,36 @@ class Repository:
     def call(self, *args) -> str:
         call = ['git', '-C', self.path]
         call.extend(args)
-        print(' '.join(call))
+        str_call = ' '.join(call)
+        print()
+        m = Manager()
+        response = m.dict()
+        def check(d: dict[str, str]) -> None:
+            r = str(subprocess.check_output(call))
+            d[str_call] = r
+        
+        p = Process(target=check, args=[response])
         try:
-            response = str(subprocess.check_output(call))
-            print(response)
-        except:
-            raise Exception()
-        return response
+            p.start()
+            p.join(10)
+            assert not p.is_alive(), "Timed out."
+        except Exception as e:
+            p.terminate()
+            p.join()
+            print(e)
+            return ''
+        else:
+            print(response[str_call])
+            return response[str_call]
+
+    def ping(self) -> bool:
+        return bool(self.call('ls-remote'))
 
     def init(self) -> None:
         self.call('init')
         self.call('switch', '-c', 'main')
 
-    # def switch(self, branch: str) -> None:
-    #     branches = self.call('branch', '-l')
-    #     args = ['switch']
-    #     if branch not in branches:
-    #         args.append('-c')
-    #     args.append(branch)
-    #     self.call(*args)
-
     def save(self) -> None:
-        # self.switch(branch)
-        # if path:
-        #     try: self.call('pull')
-        #     except: pass
-        #     d.copy_dir(path, self.path)
         self.call('add', '.')
         
         if "nothing to commit, working tree clean" in self.call('status'):
