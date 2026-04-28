@@ -31,6 +31,7 @@ class Config:
         
     def add_dir(self, name: str, path: str) -> None:
         self.dirs[name] = path
+        self.dirs = dict(sorted(self.dirs.items(), key=lambda x: x[0]))
         self.save()
         
     def del_dir(self, name: str) -> None:
