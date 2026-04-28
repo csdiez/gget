@@ -2,6 +2,10 @@ import os
 from pathlib import Path
 import shutil
 
+CLOUD_DIR = Path.home() / ".gget"
+BARE_REPO  = CLOUD_DIR / "repo.git"
+CONFIG_FILE = CLOUD_DIR / "games.json"
+
 def make_full_dir(path_name: str) -> Path:
     path = Path(path_name)
     path.mkdir(parents=True, exist_ok=True)

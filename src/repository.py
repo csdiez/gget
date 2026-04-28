@@ -1,64 +1,54 @@
 from multiprocessing import Manager, Process
+from pathlib import Path
 
-from pythonping import ping
-from datetime import datetime
 import subprocess
 
-class Repository:
-    url: str
-    path: str
+from directory import BARE_REPO
+
+def git(*args: Path | str, timeout: int = 30, **kwargs) -> subprocess.CompletedProcess:
+    cmd = ['git']
+    cmd.extend([str(arg) for arg in args])
     
-    def __init__(self, url: str, path: str = ''):
-        path = path or 'save'
-        
-        self.url = url
-        self.path = path
-        
-    def clone(self) -> None:
-        call = ['git', 'clone', self.url, self.path]
-        print(' '.join(call))
-        subprocess.call(call)
-        
-    def call(self, *args) -> str:
-        call = ['git', '-C', self.path]
-        call.extend(args)
-        str_call = ' '.join(call)
-        print()
-        m = Manager()
-        response = m.dict()
-        def check(d: dict[str, str]) -> None:
-            r = str(subprocess.check_output(call))
-            d[str_call] = r
-        
-        p = Process(target=check, args=[response])
-        try:
-            p.start()
-            p.join(10)
-            assert not p.is_alive(), "Timed out."
-        except Exception as e:
-            p.terminate()
-            p.join()
-            print(e)
-            return ''
-        else:
-            print(response[str_call])
-            return response[str_call]
+    m = Manager()
+    response = m.dict()
 
-    def ping(self) -> bool:
-        return bool(self.call('ls-remote'))
+    def check(d: dict[str, subprocess.CompletedProcess]) -> None:
+        r = subprocess.run(cmd, **(kwargs or {"capture_output": True, "text": True}))
+        d[' '.join(cmd)] = r
 
-    def init(self) -> None:
-        self.call('init')
-        self.call('switch', '-c', 'main')
+    p = Process(target=check, args=[response])
 
-    def save(self) -> None:
-        self.call('add', '.')
-        
-        if "nothing to commit, working tree clean" in self.call('status'):
-            return
-        
-        self.call('commit', '-m', datetime.now().strftime("%d/%m/%Y_%H:%M:%S"))
-        self.call('push')
-        
-    def load(self) -> None:
-        self.call('pull')
+    try:
+        p.start()
+        p.join(timeout)
+        assert not p.is_alive(), "Timed out."
+    except Exception as e:
+        p.terminate()
+        p.join()
+        raise e
+    else:
+        result = response.values()[0]
+        return result
+
+def git_output(*args: str, timeout: int = 30, **kwargs) -> str:
+    """Same as git() but returns stdout as a stripped string."""
+    return git(*args, timeout=timeout, **kwargs).stdout.strip()
+
+def git_games(*args: str, timeout: int = 30, work_tree: Path | None = None, **kwargs) -> subprocess.CompletedProcess:
+    arg_list = list(args)
+    if work_tree:
+        arg_list.append(f"--work-tree={work_tree}")
+    return git(f"--git-dir={BARE_REPO}", *arg_list, timeout=timeout, **kwargs)
+
+def git_games_output(*args, timeout: int = 30, work_tree: Path | None = None, **kwargs) -> str:
+    arg_list = list(args)
+    if work_tree:
+        arg_list.append(f"--work-tree={work_tree}")
+    return git_output(f"--git-dir={BARE_REPO}", *arg_list, timeout=timeout, work_tree=work_tree, **kwargs)
+
+def ping() -> int:
+    """
+    Ping loaded repo from the home directory
+    Sends the return code from the command (0=pass, else=fail)
+    """
+    return git_games('ls-remote').returncode

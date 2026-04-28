@@ -1,72 +1,150 @@
-import os
+
+from datetime import datetime
+from pathlib import Path
 
 from args import args
-from config import Config
-import directory as d
-from repository import Repository
+from config import load_config, save_config
+from directory import BARE_REPO, rm_dir
+from repository import git, git_games, git_games_output
+
+def cmd_init(remote_url: str) -> None:
+    """Initialise the bare repo and attach a remote."""
+    if BARE_REPO.exists():
+        rm_dir(str(BARE_REPO))
+
+    BARE_REPO.mkdir(parents=True, exist_ok=True)
+    git("init", "--bare", str(BARE_REPO), check=True)
+
+    git_games("remote", "add", "origin", remote_url)
+    git_games("config", "core.bare", "false")   # allows work-tree usage
+
+    print(f"Initialised bare repo at {BARE_REPO}")
+    print(f"Remote: {remote_url}")
+
+def cmd_add(game_name: str, save_path: str) -> None:
+    """Register a game's save directory (no files moved)."""
+    path = Path(save_path).expanduser().resolve()
+
+    assert path.exists(), f"Save path does not exist: {path}"
+
+    cfg = load_config()
+    cfg[game_name] = str(path)
+    save_config(cfg)
+
+    _write_sparse_gitignore(path)
+
+    print(f"Registered '{game_name}' → {path}")
+
+def cmd_remove(game_name: str) -> None:
+    config = load_config()
+
+    assert game_name in config, f"{game_name} not found."
+
+    config.pop(game_name)
+    save_config(config)
+
+def cmd_push(game_name: str) -> None:
+    """Stage, commit, and push a game's saves."""
+    cfg = load_config()
+    
+    assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
+
+    save_path = Path(cfg[game_name])
+
+    work_tree = save_path.parent
+    rel_folder = save_path.name
+
+    git_games("add", rel_folder, work_tree=work_tree)
+
+    # Check if there's actually anything to commit
+    status = git_games_output("status", "--porcelain", rel_folder, work_tree=work_tree)
+    if not status:
+        print(f"'{game_name}' — nothing to push, saves are up to date.")
+        return
+
+    git_games("commit", "-m", f"sync: {game_name}, {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}", work_tree=work_tree)
+    git_games("push", "origin", "HEAD:main", work_tree=work_tree)
+
+    print(f"Pushed '{game_name}' saves to remote.")
+
+def cmd_pull(game_name: str) -> None:
+    """Pull latest saves for a game from remote."""
+    cfg = load_config()
+    
+    assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
+    
+    save_path = Path(cfg[game_name])
+    work_tree = save_path.parent
+
+    git_games("fetch", "origin")
+    git_games("checkout", "origin/main", "--", game_name, work_tree=work_tree)
+
+    print(f"Pulled latest saves for '{game_name}' into {save_path}")
+
+def cmd_list() -> None:
+    """List all registered games."""
+    cfg = load_config()
+    if not cfg:
+        print("No games registered yet.")
+        return
+
+    print(f"{'Game':<25} Save Path")
+    print("-" * 60)
+    for name, path in sorted(cfg.items()):
+        exists = "✓" if Path(path).exists() else "✗ (missing)"
+        print(f"{name:<25} {path}  {exists}")
+
+
+# --- Internal ----------------------------------------------------------------
+
+def _write_sparse_gitignore(save_path: Path) -> None:
+    """
+    Place a .gitignore in the work-tree root (save_path.parent) that tracks
+    only the registered game folders, preventing accidental staging of
+    unrelated files sitting in the same parent directory.
+    """
+    cfg = load_config()
+    work_tree = save_path.parent
+    gitignore = work_tree / ".gitignore"
+
+    tracked = {Path(p).name for p in cfg.values() if Path(p).parent == work_tree}
+
+    # Ignore everything, then un-ignore each tracked folder
+    lines = ["# managed by gget", "*", ""]
+    for folder in sorted(tracked):
+        lines.append(f"!{folder}/")
+
+    gitignore.write_text("\n".join(lines) + "\n")
 
 if __name__ == "__main__":
-    if args.set_config:
-        assert d.exists(args.set_config), f"Directory not found: {args.set_config}"
-
-    config = Config(args.set_config)
-
-
-    if args.config:
-        print(f"{config.path=}")
 
     if args.add:
-        assert d.exists(args.add[1]), f"Directory not found: {args.add[1]}"
-        config.add_dir(*args.add)
+        cmd_add(*args.add)
     
     if args.remove:
-        config.del_dir(args.remove)
+        cmd_remove(args.remove)
         
     if args.games:
-        print(f"{config.dirs=}")
-        
-    if args.url:
-        print(f"{config.repo_link=}")
-    
-    if args.set_url:
-        config.set_repo(args.set_url)
-        
-    if args.path:
-        print(f"{config.save_dir=}")
-        
-    if args.set_path:
-        config.set_save_dir(args.set_path)
-
-    repo = Repository(config.repo_link, config.save_dir)
+        cmd_list()
 
     if args.ping:
-        repo.ping()
+        print(git_games("ls-remote"))
 
     if args.init:
-        d.rm_dir(config.save_dir)
-        d.make_full_dir(config.save_dir)
-        repo.clone()
-        
+        cmd_init(args.init)
+
     if args.save:
-        path = config.dirs.get(args.save)
-        assert path, f"{args.save} not found."
-        d.copy_dir(path, d.join(config.save_dir, args.save))
-        repo.save()
-        
+        cmd_push(args.save)
+
     if args.load:
-        path = config.dirs.get(args.load)
-        assert path, f"{args.load} not found."
-        d.copy_dir(d.join(config.save_dir, args.load), path)
-        repo.load()
+        cmd_pull(args.load)
     
     if args.save_all:
-        for game, path in config.dirs.items():
-            d.copy_dir(path, d.join(config.save_dir, game))
-        repo.save()
+        for game, path in load_config().items():
+            cmd_push(game)
        
     if args.load_all:
-        repo.load()
-        for game, path in config.dirs.items():
-            d.copy_dir(d.join(config.save_dir, game), path)
+        for game, path in load_config().items():
+            cmd_pull(game)
     
     pass
