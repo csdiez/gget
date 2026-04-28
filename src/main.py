@@ -43,6 +43,20 @@ def cmd_remove(game_name: str) -> None:
     config.pop(game_name)
     save_config(config)
 
+def cmd_diffs(game_name: str) -> bool:
+    cfg = load_config()
+    
+    assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
+
+    save_path = Path(cfg[game_name])
+
+    work_tree = save_path.parent
+    rel_folder = save_path.name
+
+    git_games("add", rel_folder, work_tree=work_tree)
+
+    return bool(git_games_output("status", "--porcelain", rel_folder, work_tree=work_tree))
+
 def cmd_push(game_name: str) -> None:
     """Stage, commit, and push a game's saves."""
     cfg = load_config()

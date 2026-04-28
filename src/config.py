@@ -3,12 +3,12 @@ import os
 
 from directory import CLOUD_DIR, CONFIG_FILE
 
-def load_config() -> dict:
+def load_config() -> dict[str, str]:
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text())
     return {}
 
-def save_config(cfg: dict) -> None:
+def save_config(cfg: dict[str, str]) -> None:
     CLOUD_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 

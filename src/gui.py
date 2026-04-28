@@ -1,8 +1,9 @@
 import PySimpleGUI as sg
 
-from config import Config
+from config import Config, load_config, save_config
 import directory as d
-from repository import Repository
+from main import cmd_pull, cmd_push
+from repository import ping
 
 def example():
     # All the stuff inside your window.
@@ -29,8 +30,8 @@ def confirmation(prompt: str) -> bool:
     decision = False
 
     layout = [
-        [sg.Push(), sg.Text(prompt), sg.Push],
-        [sg.Button('Confirm'), sg.Button('Cancel')]
+        [sg.Push(), sg.Text(prompt), sg.Push()],
+        [sg.Push(), sg.Button('Confirm'), sg.Button('Cancel'), sg.Push()]
     ]
 
     window = sg.Window('', layout)
@@ -51,8 +52,8 @@ def confirmation(prompt: str) -> bool:
 
 def warning(text: str) -> None:
     layout = [
-        [sg.Text(text)],
-        [sg.Button('Close')]
+        [sg.Push(), sg.Text(text), sg.Push()],
+        [sg.Push(), sg.Button('Close'), sg.Push()]
     ]
 
     window = sg.Window("Warning", layout)
@@ -100,20 +101,46 @@ def add_game() -> tuple[str, str] | None:
 
     return game
 
-def main(config: Config = Config()):
+def remove_game() -> None:
+    config = load_config()
+    games = {game.replace('_', ' '): game for game in config.keys()}
+
+    layout: list = [
+        [sg.Text("Choose a game to remove:")],
+        [[sg.Button(game)] for game in games.keys()],
+        [sg.Push(), sg.Button("Cancel"), sg.Push()]
+    ]
+
+    window = sg.Window("Remove Game", layout)
+
+    while 1:
+        event, values = window.read()
+
+        if event in (sg.WIN_CLOSED, 'Cancel'):
+            break
+
+        if event:
+            config.pop(games[event])
+            save_config(config)
+            break
+
+    window.close()
+
+def main():
+    config = load_config()
+
     restart = False
 
-    repo = Repository(config.repo_link, config.save_dir)
-    online = repo.ping()
+    online = not bool(ping())
     
     dir_rows = [
         [
-            sg.Text(game.replace('_', ' ') + ':'), sg.Push(), sg.Text(dir), sg.Push(),
+            sg.Text(game.replace('_', ' ') + ':'), sg.Push(), sg.InputText(dir), sg.Push(),
             sg.Button('↧', tooltip="Download"), sg.Button('↥', tooltip="Upload")
-        ] for game, dir in config.dirs.items()
+        ] for game, dir in config.items()
     ]
 
-    dir_keys = list(config.dirs.keys())
+    dir_keys = list(config.keys())
     
     layout = [
         [
@@ -122,7 +149,7 @@ def main(config: Config = Config()):
             sg.Button('↧', tooltip="Download"), sg.Button('↥', tooltip="Upload")
         ],
         dir_rows,
-        [sg.Push(), sg.Button("Refresh", tooltip="Reopen this window."), sg.Button('Close',), sg.Push()]
+        [sg.Push(), sg.Button("Save", tooltip="Save current directories."), sg.Button("Refresh", tooltip="Reopen this window."), sg.Button('Close', tooltip="Close Window."), sg.Push()]
     ]
 
     window = sg.Window("Gget", layout)
@@ -137,6 +164,9 @@ def main(config: Config = Config()):
             restart = True
             break
 
+        if event == 'Save':
+            pass
+
         if event == '+':
             game = add_game()
             if not game:
@@ -145,52 +175,47 @@ def main(config: Config = Config()):
 
             game_name, dir = game
 
-            if game_name in config.dirs:
+            if game_name in config:
                 warning(f"{game_name} already exists")
                 continue
             
             if not d.exists(dir):
                 warning(f"Directory does not exist\n{dir}")
                 continue
+            
+            config[game_name] = dir
+            save_config(config)
 
-            # local_save
-            # d.make_full_dir()
-            # d.copy_dir(dir, )
-
-            pass
+            restart = True
+            break
 
         if event == '-':
-            pass
+            remove_game()
 
         if event == '↧':
             if not confirmation('This will overwrite your local save data, continue?'):
                 continue
             
-            for game, dir in config.dirs.items():
-                repo.load()
-                d.copy_dir(d.join(config.save_dir, game), dir)
+            for game in config.values():
+                cmd_pull(game)
+
 
         elif event == '↥':
-            for game, dir in config.dirs.items():
-                d.copy_dir(dir, d.join(config.save_dir, game))
-                repo.save()
+            for game in config.values():
+                cmd_push(game)
 
         elif isinstance(event, str):
             if '↧' in event:
                 game = dir_keys[int(event[1]) // 2]
-                dir = config.dirs[game]
                 
                 if not confirmation(f'This will overwrite your local save data, continue?\n{game}'):
                     continue
                 
-                repo.load()
-                d.copy_dir(d.join(config.save_dir, game), dir)
+                cmd_pull(game)
 
             elif '↥' in event:
                 game = dir_keys[(int(event[1]) - 1) // 2]
-                dir = config.dirs[game]
-                d.copy_dir(dir, d.join(config.save_dir, game))
-                repo.save()
+                cmd_push(game)
 
         if event:
             print(f"{event=}")
@@ -203,7 +228,7 @@ def main(config: Config = Config()):
     window.close()
 
     if restart:
-        main(config)
+        main()
 
 if __name__ == "__main__":
     main()
