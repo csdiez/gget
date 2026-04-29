@@ -6,15 +6,17 @@ import subprocess
 from directory import BARE_REPO
 
 def git(*args: Path | str, timeout: int = 30, **kwargs) -> subprocess.CompletedProcess:
-    cmd = ['git']
-    cmd.extend([str(arg) for arg in args])
+    cmd_args = ['git']
+    cmd_args.extend([str(arg) for arg in args])
     
+    cmd_str = ' '.join(cmd_args)
+
     m = Manager()
     response = m.dict()
 
     def check(d: dict[str, subprocess.CompletedProcess]) -> None:
-        r = subprocess.run(cmd, **(kwargs or {"capture_output": True, "text": True}))
-        d[' '.join(cmd)] = r
+        r = subprocess.run(cmd_args, **(kwargs or {"capture_output": True, "text": True}))
+        d[cmd_str] = r
 
     p = Process(target=check, args=[response])
 
@@ -22,12 +24,14 @@ def git(*args: Path | str, timeout: int = 30, **kwargs) -> subprocess.CompletedP
         p.start()
         p.join(timeout)
         assert not p.is_alive(), "Timed out."
-    except Exception as e:
+        result: subprocess.CompletedProcess = response.values()[0]
+        if result.returncode:
+            raise SystemError(cmd_str, result.returncode, result.stderr)
+    except AssertionError as ae:
         p.terminate()
         p.join()
-        raise e
+        raise ae
     else:
-        result = response.values()[0]
         return result
 
 def git_output(*args: str, timeout: int = 30, **kwargs) -> str:

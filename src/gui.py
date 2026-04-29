@@ -1,6 +1,6 @@
 import PySimpleGUI as sg
 
-from config import Config, load_config, save_config
+from config import load_config, save_config
 import directory as d
 from main import cmd_pull, cmd_push
 from repository import ping
@@ -126,6 +126,16 @@ def remove_game() -> None:
 
     window.close()
 
+def load_game(game_name: str) -> None:
+    try:
+        cmd_pull(game_name)
+    except SystemError as se:
+        git_cmd = se.args[0]
+        err_code = se.args[1]
+        stderr = se.args[2]
+
+        warning(f"Couldn't load saves for {game_name}\nCommand: {git_cmd}\nError Code {err_code}: {stderr}")
+
 def main():
     config = load_config()
 
@@ -135,7 +145,7 @@ def main():
     
     dir_rows = [
         [
-            sg.Text(game.replace('_', ' ') + ':'), sg.Push(), sg.InputText(dir), sg.Push(),
+            sg.Text(game.replace('_', ' ') + ':'), sg.Push(), sg.InputText(dir),
             sg.Button('↧', tooltip="Download"), sg.Button('↥', tooltip="Upload")
         ] for game, dir in config.items()
     ]
@@ -164,8 +174,10 @@ def main():
             restart = True
             break
 
-        if event == 'Save':
-            pass
+        if event == 'Save' and isinstance(values, dict):
+            for i, dir in values.items():
+                config[dir_keys[i]] = dir
+            save_config(config)
 
         if event == '+':
             game = add_game()
@@ -196,12 +208,12 @@ def main():
             if not confirmation('This will overwrite your local save data, continue?'):
                 continue
             
-            for game in config.values():
-                cmd_pull(game)
+            for game in config.keys():
+                load_game(game)
 
 
         elif event == '↥':
-            for game in config.values():
+            for game in config.keys():
                 cmd_push(game)
 
         elif isinstance(event, str):
@@ -211,17 +223,17 @@ def main():
                 if not confirmation(f'This will overwrite your local save data, continue?\n{game}'):
                     continue
                 
-                cmd_pull(game)
+                load_game(game)
 
             elif '↥' in event:
                 game = dir_keys[(int(event[1]) - 1) // 2]
                 cmd_push(game)
 
-        if event:
-            print(f"{event=}")
+        # if event:
+        #     print(f"{event=}")
 
-        if values:
-            print(f"{values=}")
+        # if values:
+        #     print(f"{values=}")
 
         pass
     
