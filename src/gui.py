@@ -1,30 +1,11 @@
+import logging
+
 import PySimpleGUI as sg
 
 from config import load_config, save_config
 import directory as d
 from main import cmd_pull, cmd_push
-from repository import ping
-
-def example():
-    # All the stuff inside your window.
-    layout = [  [sg.Text("What's your name?")],
-                [sg.InputText()],
-                [sg.Button('Ok'), sg.Button('Cancel')] ]
-
-    # Create the Window
-    window = sg.Window('Hello Example', layout)
-
-    # Event Loop to process "events" and get the "values" of the inputs
-    while True:
-        event, values = window.read()
-
-        # if user closes window or clicks cancel
-        if event == sg.WIN_CLOSED or event == 'Cancel':
-            break
-
-        print('Hello', values[0], '!')
-
-    window.close()
+from repository import ping, remote_saves
 
 def confirmation(prompt: str) -> bool:
     decision = False
@@ -37,7 +18,7 @@ def confirmation(prompt: str) -> bool:
     window = sg.Window('', layout)
 
     while 1:
-        event, values = window.read()
+        event, _ = window.read()
 
         if event in [sg.WIN_CLOSED, 'Cancel']:
             break
@@ -50,13 +31,13 @@ def confirmation(prompt: str) -> bool:
 
     return decision
 
-def warning(text: str) -> None:
+def text_and_close(title: str, text: str) -> None:
     layout = [
         [sg.Push(), sg.Text(text), sg.Push()],
-        [sg.Push(), sg.Button('Close'), sg.Push()]
+        [sg.Push(), sg.Button('Close', focus=True), sg.Push()]
     ]
-
-    window = sg.Window("Warning", layout)
+    print(text)
+    window = sg.Window(title, layout)
 
     while 1:
         event, _ = window.read()
@@ -65,6 +46,18 @@ def warning(text: str) -> None:
             break
 
     window.close()
+
+def info(text: str) -> None:
+    logging.info(text)
+    text_and_close('Info', text)
+
+def warning(text: str) -> None:
+    logging.warning(text)
+    text_and_close('Warning', text)
+
+def error(text: str) -> None:
+    logging.info(text)
+    text_and_close('Error', text)
 
 def add_game() -> tuple[str, str] | None:
     layout = [
@@ -101,7 +94,7 @@ def add_game() -> tuple[str, str] | None:
 
     return game
 
-def remove_game() -> None:
+def remove_game() -> str:
     config = load_config()
     games = {game.replace('_', ' '): game for game in config.keys()}
 
@@ -113,18 +106,23 @@ def remove_game() -> None:
 
     window = sg.Window("Remove Game", layout)
 
+    game: str = ''
+
     while 1:
-        event, values = window.read()
+        event, _ = window.read()
 
         if event in (sg.WIN_CLOSED, 'Cancel'):
             break
 
         if event:
+            game = games[event]
             config.pop(games[event])
             save_config(config)
             break
 
     window.close()
+
+    return game
 
 def load_game(game_name: str) -> None:
     try:
@@ -143,10 +141,12 @@ def main():
 
     online = not bool(ping())
     
+    saved = remote_saves()
+
     dir_rows = [
         [
             sg.Text(game.replace('_', ' ') + ':'), sg.Push(), sg.InputText(dir),
-            sg.Button('↧', tooltip="Download"), sg.Button('↥', tooltip="Upload")
+            sg.Button('↧', tooltip="Download" if game in saved else "No available save", disabled=game not in saved), sg.Button('↥', tooltip="Upload")
         ] for game, dir in config.items()
     ]
 
@@ -154,12 +154,12 @@ def main():
     
     layout = [
         [
-            sg.Button('+', tooltip="Add new directory."), sg.Button('-', tooltip="Remove a directory."), sg.Push(),
+            sg.Button('+', tooltip="Add new directory"), sg.Button('-', tooltip="Remove a directory"), sg.Push(),
             sg.Text('🟢' if online else '🔴', tooltip='Online' if online else 'Offline'),
             sg.Button('↧', tooltip="Download"), sg.Button('↥', tooltip="Upload")
         ],
         dir_rows,
-        [sg.Push(), sg.Button("Save", tooltip="Save current directories."), sg.Button("Refresh", tooltip="Reopen this window."), sg.Button('Close', tooltip="Close Window."), sg.Push()]
+        [sg.Push(), sg.Button("Save", tooltip="Save current directories"), sg.Button("Refresh", tooltip="Reopen this window"), sg.Button('Close', tooltip="Close Window"), sg.Push()]
     ]
 
     window = sg.Window("Gget", layout)
@@ -198,11 +198,18 @@ def main():
             config[game_name] = dir
             save_config(config)
 
+            info(f"Added {game_name}")
+
             restart = True
             break
 
         if event == '-':
-            remove_game()
+            game = remove_game()
+
+            info(f"Removed {game}")
+
+            restart = True
+            break
 
         if event == '↧':
             if not confirmation('This will overwrite your local save data, continue?'):
@@ -211,10 +218,21 @@ def main():
             for game in config.keys():
                 load_game(game)
 
+            restart = True
+            break
 
         elif event == '↥':
+            diffs: dict[str, bool] = {}
             for game in config.keys():
-                cmd_push(game)
+                diffs[game] = cmd_push(game)
+
+            if diffs:
+                info(f"Uploaded save data for:\n{'\n'.join(diffs.keys())}")
+                restart = True
+                break
+
+            else:
+                info("No changes to upload.")
 
         elif isinstance(event, str):
             if '↧' in event:
@@ -225,9 +243,23 @@ def main():
                 
                 load_game(game)
 
+                info(f"Loaded saves for {game}.")
+
+                restart = True
+                break
+
             elif '↥' in event:
                 game = dir_keys[(int(event[1]) - 1) // 2]
-                cmd_push(game)
+                changed = cmd_push(game)
+
+                if changed:
+                    info(f"Uploaded saves for {game}.")
+
+                    restart = True
+                    break
+
+                else:
+                    info(f"No changes to upload.")
 
         # if event:
         #     print(f"{event=}")

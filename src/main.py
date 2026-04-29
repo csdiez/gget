@@ -43,21 +43,7 @@ def cmd_remove(game_name: str) -> None:
     config.pop(game_name)
     save_config(config)
 
-def cmd_diffs(game_name: str) -> bool:
-    cfg = load_config()
-    
-    assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
-
-    save_path = Path(cfg[game_name])
-
-    work_tree = save_path.parent
-    rel_folder = save_path.name
-
-    git_games("add", rel_folder, work_tree=work_tree)
-
-    return bool(git_games_output("status", "--porcelain", rel_folder, work_tree=work_tree))
-
-def cmd_push(game_name: str) -> None:
+def cmd_push(game_name: str) -> bool:
     """Stage, commit, and push a game's saves."""
     cfg = load_config()
     
@@ -74,12 +60,14 @@ def cmd_push(game_name: str) -> None:
     status = git_games_output("status", "--porcelain", rel_folder, work_tree=work_tree)
     if not status:
         print(f"'{game_name}' — nothing to push, saves are up to date.")
-        return
+        return False
 
     git_games("commit", "-m", f"sync: {game_name}, {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}", work_tree=work_tree)
     git_games("push", "origin", "HEAD:main", work_tree=work_tree)
 
     print(f"Pushed '{game_name}' saves to remote.")
+
+    return True
 
 def cmd_pull(game_name: str) -> None:
     """Pull latest saves for a game from remote."""
