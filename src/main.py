@@ -142,7 +142,7 @@ if __name__ == "__main__":
             else:
                 git('switch', '-c', 'main')
     
-    if args.save_all or 1:
+    if args.save_all:
         for game in load_games().items():
             Repository(*game).save()
        
