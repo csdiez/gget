@@ -1,25 +1,20 @@
 
 from datetime import datetime
+import os
 from pathlib import Path
+import shutil
 
 from args import args
-from config import load_config, save_config
-from directory import BARE_REPO, rm_dir
-from repository import git, git_games, git_games_output
+from repository import Repository, get_branches, git, ping
+from config import REPO, load_games, save_games
+from directory import CD
 
-def cmd_init(remote_url: str) -> None:
+def cmd_init(repo_url: str) -> None:
     """Initialise the bare repo and attach a remote."""
-    if BARE_REPO.exists():
-        rm_dir(str(BARE_REPO))
-
-    BARE_REPO.mkdir(parents=True, exist_ok=True)
-    git("init", "--bare", str(BARE_REPO), check=True)
-
-    git_games("remote", "add", "origin", remote_url)
-    git_games("config", "core.bare", "false")   # allows work-tree usage
-
-    print(f"Initialised bare repo at {BARE_REPO}")
-    print(f"Remote: {remote_url}")
+    if os.path.exists(REPO):
+        shutil.rmtree(REPO)
+    
+    git("clone", repo_url, str(REPO))
 
 def cmd_add(game_name: str, save_path: str) -> None:
     """Register a game's save directory (no files moved)."""
@@ -27,25 +22,25 @@ def cmd_add(game_name: str, save_path: str) -> None:
 
     assert path.exists(), f"Save path does not exist: {path}"
 
-    cfg = load_config()
+    cfg = load_games()
     cfg[game_name] = str(path)
-    save_config(cfg)
+    save_games(cfg)
 
     _write_sparse_gitignore(path)
 
     print(f"Registered '{game_name}' → {path}")
 
 def cmd_remove(game_name: str) -> None:
-    config = load_config()
+    config = load_games()
 
     assert game_name in config, f"{game_name} not found."
 
     config.pop(game_name)
-    save_config(config)
+    save_games(config)
 
 def cmd_push(game_name: str) -> bool:
     """Stage, commit, and push a game's saves."""
-    cfg = load_config()
+    cfg = load_games()
     
     assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
 
@@ -71,7 +66,7 @@ def cmd_push(game_name: str) -> bool:
 
 def cmd_pull(game_name: str) -> None:
     """Pull latest saves for a game from remote."""
-    cfg = load_config()
+    cfg = load_games()
     
     assert game_name in cfg, f"Unknown game '{game_name}'. Run: add <game> <path>"
     
@@ -85,7 +80,7 @@ def cmd_pull(game_name: str) -> None:
 
 def cmd_list() -> None:
     """List all registered games."""
-    cfg = load_config()
+    cfg = load_games()
     if not cfg:
         print("No games registered yet.")
         return
@@ -105,7 +100,7 @@ def _write_sparse_gitignore(save_path: Path) -> None:
     only the registered game folders, preventing accidental staging of
     unrelated files sitting in the same parent directory.
     """
-    cfg = load_config()
+    cfg = load_games()
     work_tree = save_path.parent
     gitignore = work_tree / ".gitignore"
 
@@ -130,23 +125,29 @@ if __name__ == "__main__":
         cmd_list()
 
     if args.ping:
-        print(git_games("ls-remote"))
+        print(ping())
 
     if args.init:
         cmd_init(args.init)
 
-    if args.save:
-        cmd_push(args.save)
-
-    if args.load:
-        cmd_pull(args.load)
+    if REPO.exists():
+        with CD(REPO):
+            git('pull', '--all', cwd=REPO)
+            branches = get_branches()
+            games = load_games()
+            for branch in branches:
+                if branch not in games:
+                    git('switch', branch)
+                    break
+            else:
+                git('switch', '-c', 'main')
     
-    if args.save_all:
-        for game, path in load_config().items():
-            cmd_push(game)
+    if args.save_all or 1:
+        for game in load_games().items():
+            Repository(*game).save()
        
     if args.load_all:
-        for game, path in load_config().items():
-            cmd_pull(game)
+        for game in load_games().items():
+            Repository(*game).load()
     
     pass

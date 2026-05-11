@@ -1,27 +1,30 @@
+# Source - https://stackoverflow.com/a/13197763
+# Posted by Brian M. Hunt, modified by community. See post 'Timeline' for change history
+# Retrieved 2026-05-10, License - CC BY-SA 3.0
+
 import os
 from pathlib import Path
-import shutil
 
-CLOUD_DIR = Path.home() / ".gget"
-BARE_REPO  = CLOUD_DIR / "repo.git"
-CONFIG_FILE = CLOUD_DIR / "games.json"
+class CD:
+    """Context manager for changing the current working directory"""
+    def __init__(self, newPath: str | Path):
+        self.newPath = os.path.expanduser(newPath)
 
-def make_full_dir(path_name: str) -> Path:
-    path = Path(path_name)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    def __enter__(self):
+        self.savedPath = os.getcwd()
+        os.chdir(self.newPath)
 
-def copy_dir(src: str, dst: str):
-    make_full_dir(src)
-    make_full_dir(dst)
-    shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
-    
-def rm_dir(path: str) -> None:
-    if os.path.exists(path):
-        shutil.rmtree(path)
+    def __exit__(self, etype, value, traceback):
+        os.chdir(self.savedPath)
 
-def exists(path: str) -> bool:
-    return os.path.exists(path)
 
-def join(*path: str) -> str:
-    return os.path.join(*path)
+def cd(dir: str | Path):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            cwd = os.getcwd()
+            os.chdir(dir)
+            result = func(*args, **kwargs)
+            os.chdir(cwd)
+            return result
+        return wrapper
+    return decorator

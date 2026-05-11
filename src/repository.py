@@ -1,101 +1,165 @@
+from dataclasses import dataclass
+from datetime import datetime
 import logging
-import subprocess
-from multiprocessing import Manager, Process
+import os
 from pathlib import Path
-from typing import Any
+import shutil
+import socket
+import subprocess
+from typing import Self
 
-from directory import BARE_REPO
+from config import REPO
+from directory import cd
 
+def byte_f(b: bytes | str | None) -> str:
+    if isinstance(b, str):
+        return b
+    elif isinstance(b, bytes):
+        return b.decode('utf-8')
+    return ''
 
-def git(
-    *args: Path | str, timeout: int = 30, **kwargs: Any
-) -> subprocess.CompletedProcess:
-    cmd_args = ["git"]
-    cmd_args.extend([str(arg) for arg in args])
+def git(*args: str | Path, timeout: int = 0, **kwargs) -> tuple[str, int]:
+    """Run a git command and return stdout. Raises exception on failure."""
+    result = None
 
-    cmd_str = " ".join(cmd_args)
+    command = ["git"]
+    for arg in args:
+        command.append(str(arg))
 
-    m = Manager()
-    response = m.dict()
+    print(' '.join(command))
 
-    def check(d: dict[str, subprocess.CompletedProcess]) -> None:
-        r = subprocess.run(
-            cmd_args, **(kwargs or {"capture_output": True, "text": True})
-        )
-        d[cmd_str] = r
+    output: tuple[str, int]
 
-    p = Process(target=check, args=[response])
+    if timeout:
+        kwargs['timeout'] = timeout
 
     try:
-        p.start()
-        p.join(timeout)
-        assert not p.is_alive(), "Timed out."
-        result: subprocess.CompletedProcess = response.values()[0]
-        if result.returncode:
-            logging.error(cmd_str, result.returncode, result.stderr)
-            raise SystemError(cmd_str, result.returncode, result.stderr)
-    except subprocess.CalledProcessError as e:
-        p.terminate()
-        p.join()
-        raise e
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            **kwargs
+        )
+    except subprocess.CalledProcessError as cpe:
+        output = byte_f(cpe.stdout) + byte_f(cpe.stderr), cpe.returncode
+    except subprocess.TimeoutExpired as te:
+        output = byte_f(te.stderr) + f"\nTimed out after {te.timeout} seconds.", 504
     else:
-        logging.info(cmd_str, result.stdout)
+        output = result.stdout, result.returncode
+
+    print(output[0])
+    return output
+
+
+class Repository:
+    name: str
+    path: str
+
+    _is_open: bool
+    _original_dir: str
+
+    def __init__(self, name: str, path: str | Path) -> None:
+        self.name = name
+        self.path = str(path)
+
+    # def __enter__(self) -> Self:
+    #     assert REPO.exists(), FileNotFoundError(f"{REPO} does not exist.")
+
+    #     path = Path(self.path).parent
+    #     self._original_dir = os.getcwd()
+
+    #     repo_dir: Path = path / self.name
+        
+    #     shutil.rmtree(repo_dir, ignore_errors=True)
+    #     git('clone', REPO, str(repo_dir))
+    #     os.chdir(repo_dir)
+
+    #     response = git('switch', self.name)
+
+    #     if response[1]:
+    #         git('switch', '-c', self.name)
+    #         git('add', '.')
+    #         git('commit', '-m', f'"Initialize {self.name}"')
+    #         git('push', 'origin', 'HEAD')
+
+    #     self._is_open = True
+    #     return self
+
+    # def __exit__(self, exc_type = None, exc = None, tb = None):
+    #     shutil.rmtree(os.getcwd(), ignore_errors=True)
+
+    #     os.chdir(REPO)
+    #     git('switch', self.name)
+    #     git('push', "--set-upstream", "origin", self.name)
+
+    #     os.chdir(self._original_dir)
+    #     self._is_open = False
+
+    # def open(self) -> Self:
+    #     return self.__enter__()
+    
+    # def close(self) -> None:
+    #     return self.__exit__()
+
+    # @staticmethod
+    # def check_open(func):
+    #     def wrapper(self: "Repository", *args, **kwargs):
+    #         assert self._is_open, "Repository directory must be opened first."
+    #         return func(self, *args, **kwargs)
+    #     return wrapper
+
+
+    def switch(self, branch: str = '') -> int:
+        result = git('switch', branch or self.name)[1]
+        if result:
+            result = git('switch', '-c', self.name)[1]
+            git('add', '.')
+            git('commit', '-m', f'"Initialize {self.name}"')
+            git('push', 'origin', 'HEAD')
         return result
 
+    @cd(REPO)
+    def save(self) -> None:
+        cur_branch = git('status')[0].splitlines()[0].lstrip("On branch ").strip()
+        self.switch()
 
-def git_output(*args: str, timeout: int = 30, **kwargs: Any) -> str:
-    """Same as git() but returns stdout as a stripped string."""
-    return git(*args, timeout=timeout, **kwargs).stdout.strip()
+        repo_path = REPO / Path(self.path).name
+        shutil.rmtree(repo_path, ignore_errors=True)
+        shutil.move(self.path, repo_path)
 
+        git('add', '.')
+        git('commit', '-m', f'"{socket.gethostname()}, {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}"')
+        git('push')
 
-def git_games(
-    *args: str, timeout: int = 30, work_tree: Path | None = None, **kwargs: Any
-) -> subprocess.CompletedProcess:
-    if work_tree:
-        return git(
-            f"--work-tree={work_tree}",
-            f"--git-dir={BARE_REPO}",
-            *args,
-            timeout=timeout,
-            **kwargs,
-        )
-    else:
-        return git(f"--git-dir={BARE_REPO}", *args, timeout=timeout, **kwargs)
+        shutil.move(repo_path, self.path)
 
+        self.switch(cur_branch)
+        git('branch', '-f', '-D', self.name)
 
-def git_games_output(
-    *args, timeout: int = 30, work_tree: Path | None = None, **kwargs: Any
-) -> str:
-    if work_tree:
-        return git_output(
-            f"--work-tree={work_tree}",
-            f"--git-dir={BARE_REPO}",
-            *args,
-            timeout=timeout,
-            **kwargs,
-        )
-    else:
-        return git_output(f"--git-dir={BARE_REPO}", *args, timeout=timeout, **kwargs)
+    @cd(REPO)
+    def load(self) -> None:
+        cur_branch = git('status')[0].splitlines()[0].lstrip("On branch ").strip()
+        self.switch()
+        path = REPO / Path(self.path).name
+        if path.exists():
+            shutil.rmtree(self.path, ignore_errors=True)
+            shutil.move(path, self.path)
+        self.switch(cur_branch)
 
+@cd(REPO)
+def get_branches() -> list[str]:
+    raw_branches = git('branch')[0].splitlines()
+    return list(map(lambda s: str.strip(s, '* '), raw_branches))
 
-def ping(timeout: int = 30) -> int:
+def ping(timeout: int = 5) -> int:
     """
     Ping loaded repo from the home directory
     Sends the return code from the command (0=pass, else=fail)
     """
-    try:
-        return git_games("ls-remote", timeout=timeout).returncode
-    except subprocess.CalledProcessError as e:
-        print(e, f"Timed out after {timeout} seconds")
-        return 1
+    assert REPO.exists(), FileNotFoundError(f"{REPO} does not exist.")
 
-
-def remote_saves() -> list[str]:
-    """Return all top-level directories in the remote repo."""
-    result = git_games(
-        "ls-tree", "-d", "--name-only", "origin/main", capture_output=True, text=True
-    )
-    if result.returncode != 0 or not result.stdout.strip():
-        return []
-
-    return sorted(result.stdout.strip().splitlines())
+    return git("ls-remote", timeout=timeout, cwd=REPO)[1]
+    
+if __name__ == "__main__":
+    ping()
