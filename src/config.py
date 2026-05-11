@@ -5,6 +5,8 @@ CLOUD_DIR = Path.home() / ".gget"
 REPO  = CLOUD_DIR / "saves.git"
 CONFIG_FILE = CLOUD_DIR / "games.json"
 
+CLOUD_DIR.mkdir(parents=True, exist_ok=True)
+
 def load_games() -> dict[str, str]:
     try:
         with open(CONFIG_FILE) as f:
