@@ -63,53 +63,6 @@ class Repository:
         self.name = name
         self.path = str(path)
 
-    # def __enter__(self) -> Self:
-    #     assert REPO.exists(), FileNotFoundError(f"{REPO} does not exist.")
-
-    #     path = Path(self.path).parent
-    #     self._original_dir = os.getcwd()
-
-    #     repo_dir: Path = path / self.name
-        
-    #     shutil.rmtree(repo_dir, ignore_errors=True)
-    #     git('clone', REPO, str(repo_dir))
-    #     os.chdir(repo_dir)
-
-    #     response = git('switch', self.name)
-
-    #     if response[1]:
-    #         git('switch', '-c', self.name)
-    #         git('add', '.')
-    #         git('commit', '-m', f'"Initialize {self.name}"')
-    #         git('push', 'origin', 'HEAD')
-
-    #     self._is_open = True
-    #     return self
-
-    # def __exit__(self, exc_type = None, exc = None, tb = None):
-    #     shutil.rmtree(os.getcwd(), ignore_errors=True)
-
-    #     os.chdir(REPO)
-    #     git('switch', self.name)
-    #     git('push', "--set-upstream", "origin", self.name)
-
-    #     os.chdir(self._original_dir)
-    #     self._is_open = False
-
-    # def open(self) -> Self:
-    #     return self.__enter__()
-    
-    # def close(self) -> None:
-    #     return self.__exit__()
-
-    # @staticmethod
-    # def check_open(func):
-    #     def wrapper(self: "Repository", *args, **kwargs):
-    #         assert self._is_open, "Repository directory must be opened first."
-    #         return func(self, *args, **kwargs)
-    #     return wrapper
-
-
     def switch(self, branch: str = '') -> int:
         result = git('switch', branch or self.name)[1]
         if result:

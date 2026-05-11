@@ -10,8 +10,8 @@ def load_games() -> dict[str, str]:
         with open(CONFIG_FILE) as f:
             return json.load(f)
     except:
+        save_games()
         return {}
     
-def save_games(games: dict[str, str]) -> None:
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(games, f)
+def save_games(games: dict[str, str] = {}) -> None:
+    CONFIG_FILE.write_text(json.dumps(games))
