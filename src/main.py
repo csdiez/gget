@@ -6,27 +6,18 @@ import shutil
 
 from args import args
 from repository import Repository, get_branches, git, ping
-from config import REPO, load_games, save_games
+from config import REPO, Games, load_games, save_games
 from directory import CD
-
-def cmd_init(repo_url: str) -> None:
-    """Initialise the bare repo and attach a remote."""
-    if os.path.exists(REPO):
-        shutil.rmtree(REPO)
-    
-    git("clone", repo_url, str(REPO))
 
 if __name__ == "__main__":
 
     if args.add:
-        games = load_games()
-        games[args.add[0]] = args.add[1]
-        save_games(games)
+        with Games() as games:
+            games[args.add[0]] = args.add[1]
     
     if args.remove:
-        games = load_games()
-        games.pop(args.remove)
-        save_games(games)
+        with Games() as games:
+            games.pop(args.remove)
         
     if args.games:
         print('\n'.join(load_games().keys()))
@@ -35,11 +26,18 @@ if __name__ == "__main__":
         print(ping())
 
     if args.init:
-        cmd_init(args.init)
+        shutil.rmtree(REPO, ignore_errors=True)
+        git("clone", args.init, str(REPO))
 
-    if REPO.exists():
+    if not REPO.exists():
+        raise FileNotFoundError(r"Repository is not initialized.\nAdd the repository with the -i {url}")
+    
+    if args.save_all or args.load_all:
+        if ping():
+            raise ConnectionError("Cannot connect to git repo.")
+
         with CD(REPO):
-            git('pull', '--all', cwd=REPO)
+            git('pull', '--all', timeout=5)
             branches = get_branches()
             games = load_games()
             for branch in branches:
@@ -48,13 +46,17 @@ if __name__ == "__main__":
                     break
             else:
                 git('switch', '-c', 'main')
-    
-    if args.save_all:
-        for game in load_games().items():
-            Repository(*game).save()
-       
-    if args.load_all:
-        for game in load_games().items():
-            Repository(*game).load()
-    
+        
+        if args.save_all:
+            print("Saved:")
+            for game in load_games().items():
+                if Repository(*game).save():
+                    print(game[0])
+        
+        if args.load_all:
+            print("Loaded:")
+            for game in load_games().items():
+                Repository(*game).load()
+                print(game[0])
+        
     pass

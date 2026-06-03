@@ -33,17 +33,17 @@ parser.add_argument(
     help="Initialize path"
 )
 
-parser.add_argument(
-    "-s", "--save",
-    type=str,
-    help='Save one game by name.'
-)
+# parser.add_argument(
+#     "-s", "--save",
+#     type=str,
+#     help='Save one game by name.'
+# )
 
-parser.add_argument(
-    "-l", "--load",
-    type=str,
-    help='Load one game by name.'
-)
+# parser.add_argument(
+#     "-l", "--load",
+#     type=str,
+#     help='Load one game by name.'
+# )
 
 parser.add_argument(
     "-sa", "--save_all",

@@ -17,3 +17,13 @@ def load_games() -> dict[str, str]:
     
 def save_games(games: dict[str, str] = {}) -> None:
     CONFIG_FILE.write_text(json.dumps(games))
+
+class Games:
+    games: dict
+
+    def __enter__(self) -> dict[str, str]:
+        self.games = load_games()
+        return self.games
+    
+    def __exit__(self, exc_type, exc, tb):
+        save_games(self.games)

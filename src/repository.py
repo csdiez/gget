@@ -18,7 +18,7 @@ def byte_f(b: bytes | str | None) -> str:
         return b.decode('utf-8')
     return ''
 
-def git(*args: str | Path, timeout: int = 0, **kwargs) -> tuple[str, int]:
+def git(*args: str | Path, timeout: int = 30, **kwargs) -> tuple[str, int]:
     """Run a git command and return stdout. Raises exception on failure."""
     result = None
 
@@ -44,11 +44,12 @@ def git(*args: str | Path, timeout: int = 0, **kwargs) -> tuple[str, int]:
     except subprocess.CalledProcessError as cpe:
         output = byte_f(cpe.stdout) + byte_f(cpe.stderr), cpe.returncode
     except subprocess.TimeoutExpired as te:
-        output = byte_f(te.stderr) + f"\nTimed out after {te.timeout} seconds.", 504
+        output = byte_f(te.stderr) + f"Timed out after {te.timeout} seconds.", 504
     else:
-        output = result.stdout, result.returncode
+        output = f"{result.stdout}{result.stderr}", result.returncode
 
-    print(output[0])
+    if output[0]:
+        print(output[0])
     return output
 
 
@@ -73,7 +74,7 @@ class Repository:
         return result
 
     @cd(REPO)
-    def save(self) -> None:
+    def save(self) -> bool:
         cur_branch = git('status')[0].splitlines()[0].lstrip("On branch ").strip()
         self.switch()
 
@@ -83,22 +84,27 @@ class Repository:
 
         git('add', '.')
         git('commit', '-m', f'"{socket.gethostname()}, {datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}"')
-        git('push')
+        result = git('push')[0]
 
         shutil.move(repo_path, self.path)
 
         self.switch(cur_branch)
         git('branch', '-f', '-D', self.name)
 
+        return 'up-to-date' not in result
+
     @cd(REPO)
-    def load(self) -> None:
+    def load(self) -> bool:
         cur_branch = git('status')[0].splitlines()[0].lstrip("On branch ").strip()
         self.switch()
         path = REPO / Path(self.path).name
         if path.exists():
             shutil.rmtree(self.path, ignore_errors=True)
             shutil.move(path, self.path)
+            return True
+        
         self.switch(cur_branch)
+        return False
 
 @cd(REPO)
 def get_branches() -> list[str]:
@@ -115,4 +121,5 @@ def ping(timeout: int = 5) -> int:
     return git("ls-remote", timeout=timeout, cwd=REPO)[1]
     
 if __name__ == "__main__":
-    ping()
+    result = git("push")
+    pass

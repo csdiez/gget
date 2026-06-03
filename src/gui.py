@@ -1,12 +1,10 @@
 import logging
+import os
 
 import PySimpleGUI as sg
 
-import directory as d
-from config import load_config, save_config
-from main import cmd_pull, cmd_push
-from repository import ping, remote_saves
-
+from repository import Repository, ping
+from config import load_games, save_games
 
 def confirmation(prompt: str) -> bool:
     decision = False
@@ -76,7 +74,7 @@ def add_game() -> tuple[str, str] | None:
 
     game: tuple[str, str] | None = None
 
-    while 1:
+    while not game:
         event, values = window.read()
 
         if event in [sg.WIN_CLOSED, "Cancel"]:
@@ -88,7 +86,6 @@ def add_game() -> tuple[str, str] | None:
 
             if game_title and dir:
                 game = (game_title, dir)
-                break
 
         if event:
             print(f"{event=}")
@@ -101,9 +98,8 @@ def add_game() -> tuple[str, str] | None:
     return game
 
 
-def remove_game() -> str:
-    config = load_config()
-    games = {game.replace("_", " "): game for game in config.keys()}
+def remove_game(*all_games: str) -> str:
+    games = {game.replace("_", " "): game for game in all_games}
 
     layout: list = [
         [sg.Text("Choose a game to remove:")],
@@ -115,7 +111,7 @@ def remove_game() -> str:
 
     game: str = ""
 
-    while 1:
+    while not game:
         event, _ = window.read()
 
         if event in (sg.WIN_CLOSED, "Cancel"):
@@ -123,64 +119,39 @@ def remove_game() -> str:
 
         if event:
             game = games[event]
-            config.pop(games[event])
-            save_config(config)
-            break
 
     window.close()
 
     return game
 
-
-def load_game(game_name: str) -> None:
-    try:
-        cmd_pull(game_name)
-    except SystemError as se:
-        git_cmd = se.args[0]
-        err_code = se.args[1]
-        stderr = se.args[2]
-
-        warning(
-            f"Couldn't load saves for {game_name}\nCommand: {git_cmd}\nError Code {err_code}: {stderr}"
-        )
-
-
 def main():
-    config = load_config()
+    games = load_games()
 
     restart = False
 
-    online = True or not bool(ping(15))
-
-    saved = remote_saves()
+    online = not bool(ping())
 
     dir_rows = [
         [
             sg.Text(game.replace("_", " ") + ":"),
             sg.Push(),
             sg.InputText(dir),
-            sg.Button(
-                "↧",
-                tooltip="Download" if game in saved else "No available save",
-                disabled=game not in saved,
-            ),
-            sg.Button("↥", tooltip="Upload"),
+            sg.Button("↧", tooltip="Download", disabled=not online),
+            sg.Button("↥", tooltip="Upload", disabled=not online),
         ]
-        for game, dir in config.items()
+        for game, dir in games.items()
     ]
 
-    dir_keys = list(config.keys())
+    game_names = list(games.keys())
 
     layout = [
         [
             sg.Button("+", tooltip="Add new directory"),
             sg.Button("-", tooltip="Remove a directory"),
             sg.Push(),
-            sg.Text(
-                "🟢" if online else "🔴", tooltip="Online" if online else "Offline"
-            ),
-            sg.Button("↧", tooltip="Download"),
-            sg.Button("↥", tooltip="Upload"),
+            sg.Text("🟢" if online else "🔴", tooltip="Online" if online else "Offline"),
+            sg.Button("↧", tooltip="Download", disabled=not online),
+            sg.Button("↥", tooltip="Upload", disabled=not online),
         ],
         dir_rows,
         [
@@ -206,8 +177,8 @@ def main():
 
         if event == "Save" and isinstance(values, dict):
             for i, dir in values.items():
-                config[dir_keys[i]] = dir
-            save_config(config)
+                games[game_names[i]] = dir
+            save_games(games)
 
         if event == "+":
             game = add_game()
@@ -217,16 +188,16 @@ def main():
 
             game_name, dir = game
 
-            if game_name in config:
+            if game_name in games:
                 warning(f"{game_name} already exists")
                 continue
 
-            if not d.exists(dir):
+            if not os.path.exists(dir):
                 warning(f"Directory does not exist\n{dir}")
                 continue
 
-            config[game_name] = dir
-            save_config(config)
+            games[game_name] = dir
+            save_games(games)
 
             info(f"Added {game_name}")
 
@@ -234,7 +205,10 @@ def main():
             break
 
         if event == "-":
-            game = remove_game()
+            game = remove_game(*games.keys())
+
+            games.pop(game)
+            save_games(games)
 
             info(f"Removed {game}")
 
@@ -245,59 +219,45 @@ def main():
             if not confirmation("This will overwrite your local save data, continue?"):
                 continue
 
-            for game in config.keys():
-                load_game(game)
+            for game in game_names:
+                Repository(game, games[game]).load()
 
-            restart = True
-            break
+            info("Loaded saves for all games")
 
         elif event == "↥":
-            diffs: dict[str, bool] = {}
-            for game in config.keys():
-                diffs[game] = cmd_push(game)
+            diffs: list[str] = []
+            for game in games.items():
+                if Repository(*game).save():
+                    diffs.append(game[0])
 
             if diffs:
-                info(f"Uploaded save data for:\n{'\n'.join(diffs.keys())}")
-                restart = True
-                break
-
+                info(f"Uploaded save data for:\n{'\n'.join(diffs)}")
             else:
                 info("No changes to upload.")
 
         elif isinstance(event, str):
             if "↧" in event:
-                game = dir_keys[int(event[1]) // 2]
+                game = game_names[int(event[1]) // 2]
 
-                if not confirmation(
-                    f"This will overwrite your local save data, continue?\n{game}"
-                ):
+                if not confirmation(f"This will overwrite your local save data, continue?\n{game}"):
                     continue
 
-                load_game(game)
+                Repository(game, games[game]).load()
 
                 info(f"Loaded saves for {game}.")
 
-                restart = True
-                break
-
             elif "↥" in event:
-                game = dir_keys[(int(event[1]) - 1) // 2]
-                changed = cmd_push(game)
-
-                if changed:
-                    info(f"Uploaded saves for {game}.")
-
-                    restart = True
-                    break
-
+                game = game_names[(int(event[1]) - 1) // 2]
+                if Repository(game, games[game]).save():
+                    info(f"Uploaded save data for {game}")
                 else:
-                    info("No changes to upload.")
+                    info("No changes to upload")
 
-        # if event:
-        #     print(f"{event=}")
+        if event:
+            print(f"{event=}")
 
-        # if values:
-        #     print(f"{values=}")
+        if values:
+            print(f"{values=}")
 
         pass
 
